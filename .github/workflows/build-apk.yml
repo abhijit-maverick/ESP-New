@@ -31,6 +31,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate app icon assets
+        run: |
+          mkdir -p assets
+          convert -size 1024x1024 xc:"#6C5CE7" assets/icon.png
+          convert -size 1024x1024 xc:"#6C5CE7" assets/splash-icon.png
+          convert -size 48x48 xc:"#6C5CE7" assets/favicon.png
+          convert -size 512x512 xc:"#6C5CE7" assets/android-icon-foreground.png
+          convert -size 512x512 xc:"#E6F4FE" assets/android-icon-background.png
+          convert -size 432x432 xc:"#1B1F3B" assets/android-icon-monochrome.png
+
       - name: Prebuild native Android project
         run: npx expo prebuild --platform android --no-install
 
