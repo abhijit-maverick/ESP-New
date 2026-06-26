@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PressableScale from '../components/PressableScale';
 import ScoreBadge from '../components/ScoreBadge';
+import { useStats } from '../store/StatsContext';
 import { colors, shadow } from '../theme';
 
 const REVEAL_DELAY = 650;
@@ -19,9 +20,13 @@ const WRAPS = [
 
 export default function BoxGameScreen({ route }) {
   const { boxCount } = route.params;
+  const gameKey = `box${boxCount}`;
+  const { recordResult } = useStats();
   const [phase, setPhase] = useState('idle');
   const [selected, setSelected] = useState(null);
-  const [ballIndex, setBallIndex] = useState(null);
+  // The ball is placed BEFORE you choose — it is genuinely hidden under one of
+  // the boxes from the moment the round begins. You are sensing where it is.
+  const [ballIndex, setBallIndex] = useState(() => Math.floor(Math.random() * boxCount));
   const [correct, setCorrect] = useState(0);
   const [total, setTotal] = useState(0);
 
@@ -30,12 +35,12 @@ export default function BoxGameScreen({ route }) {
   const balls = useRef(Array.from({ length: 5 }, () => new Animated.Value(0))).current;
   const nudge = useRef(new Animated.Value(0)).current; // selected-box wobble while sensing
 
-  const boxSize = boxCount <= 3 ? 104 : boxCount === 4 ? 88 : 74;
+  const boxSize = boxCount <= 3 ? 104 : 74;
 
   const handleSelect = (index) => {
     if (phase !== 'idle') return;
+    const won = index === ballIndex;
     setSelected(index);
-    setBallIndex(null);
     setPhase('revealing');
 
     // Anticipation wobble on the chosen box.
@@ -48,11 +53,9 @@ export default function BoxGameScreen({ route }) {
     ]).start();
 
     setTimeout(() => {
-      // Ball position is randomised only now — strictly after the tap.
-      const result = Math.floor(Math.random() * boxCount);
-      setBallIndex(result);
       setTotal((t) => t + 1);
-      setCorrect((c) => (result === index ? c + 1 : c));
+      setCorrect((c) => (won ? c + 1 : c));
+      recordResult(gameKey, won);
       setPhase('result');
 
       // Every lid flies open; the ball under its slot springs up.
@@ -81,7 +84,8 @@ export default function BoxGameScreen({ route }) {
   const reset = () => {
     setPhase('idle');
     setSelected(null);
-    setBallIndex(null);
+    // Re-hide a fresh ball under a new box for the next round.
+    setBallIndex(Math.floor(Math.random() * boxCount));
     lids.forEach((v) => v.setValue(0));
     balls.forEach((v) => v.setValue(0));
   };

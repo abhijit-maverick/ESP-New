@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PressableScale from '../components/PressableScale';
 import ScoreBadge from '../components/ScoreBadge';
+import { useStats } from '../store/StatsContext';
 import { colors, shadow } from '../theme';
 
 const COIN_SIZE = 180;
@@ -35,6 +36,7 @@ export default function CoinFlipScreen() {
   const [outcome, setOutcome] = useState(null);
   const [correct, setCorrect] = useState(0);
   const [total, setTotal] = useState(0);
+  const { recordResult } = useStats();
 
   const flip = useRef(new Animated.Value(0)).current; // 0..FLIP_MAX
   const lift = useRef(new Animated.Value(0)).current; // 0 ground -> 1 apex
@@ -83,9 +85,11 @@ export default function CoinFlipScreen() {
       const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
 
       const settle = () => {
+        const won = result === choice;
         setOutcome(result);
         setTotal((t) => t + 1);
-        setCorrect((c) => (result === choice ? c + 1 : c));
+        setCorrect((c) => (won ? c + 1 : c));
+        recordResult('coin', won);
         setPhase('result');
         Animated.spring(popIn, {
           toValue: 1,
