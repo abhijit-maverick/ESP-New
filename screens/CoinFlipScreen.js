@@ -12,23 +12,11 @@ const TOSS_DURATION = 1150;
 const SETTLE_DURATION = 360;
 
 // Half-turns the coin completes during the main toss. Even number => lands
-// Heads-up by construction. An extra half-turn is added later only if the
-// (post-selection) outcome is Tails.
+// back Heads-up (front-facing) by construction. An extra half-turn is added
+// later only if the (post-selection) outcome is Tails.
 const HALF_TURNS = 6;
-const TURN_RATE = HALF_TURNS * 180; // degrees per unit of `flip`
-const SAMPLES = 72;
-const FLIP_MAX = 1 + 1 / HALF_TURNS; // value that lands the coin Tails-up
-
-// Pre-compute a smooth |cos| squash profile and per-face visibility so the
-// coin reads like a real spinning disc rather than a flat rotating card.
-const inputRange = Array.from({ length: SAMPLES + 1 }, (_, i) => (i / SAMPLES) * FLIP_MAX);
-const scaleYRange = inputRange.map((t) =>
-  Math.max(0.08, Math.abs(Math.cos((Math.PI * TURN_RATE * t) / 180)))
-);
-const headsOpacityRange = inputRange.map((t) =>
-  Math.cos((Math.PI * TURN_RATE * t) / 180) >= 0 ? 1 : 0
-);
-const tailsOpacityRange = headsOpacityRange.map((v) => (v === 1 ? 0 : 1));
+const TOSS_DEG = HALF_TURNS * 180; // multiple of 360 -> ends front-facing
+const TAILS_DEG = TOSS_DEG + 180; // one more half-turn lands back-facing
 
 export default function CoinFlipScreen() {
   const [phase, setPhase] = useState('idle');
@@ -38,13 +26,15 @@ export default function CoinFlipScreen() {
   const [total, setTotal] = useState(0);
   const { recordResult } = useStats();
 
-  const flip = useRef(new Animated.Value(0)).current; // 0..FLIP_MAX
+  const flip = useRef(new Animated.Value(0)).current; // degrees rotated
   const lift = useRef(new Animated.Value(0)).current; // 0 ground -> 1 apex
   const popIn = useRef(new Animated.Value(0)).current; // result pill
 
-  const scaleY = flip.interpolate({ inputRange, outputRange: scaleYRange });
-  const headsOpacity = flip.interpolate({ inputRange, outputRange: headsOpacityRange });
-  const tailsOpacity = flip.interpolate({ inputRange, outputRange: tailsOpacityRange });
+  // Real 3D rotation: the back face is offset 180deg and hidden by
+  // backfaceVisibility until it swings into view, so faces never need a
+  // hand-rolled opacity/squash table.
+  const rotateYFront = flip.interpolate({ inputRange: [0, 360], outputRange: ['0deg', '360deg'] });
+  const rotateYBack = flip.interpolate({ inputRange: [0, 360], outputRange: ['180deg', '540deg'] });
   const translateY = lift.interpolate({ inputRange: [0, 1], outputRange: [0, -120] });
   const shadowScale = lift.interpolate({ inputRange: [0, 1], outputRange: [1, 0.55] });
   const shadowOpacity = lift.interpolate({ inputRange: [0, 1], outputRange: [0.28, 0.08] });
@@ -60,7 +50,7 @@ export default function CoinFlipScreen() {
 
     Animated.parallel([
       Animated.timing(flip, {
-        toValue: 1,
+        toValue: TOSS_DEG,
         duration: TOSS_DURATION,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
@@ -102,7 +92,7 @@ export default function CoinFlipScreen() {
       if (result === 'Tails') {
         // One more crisp half-flip to land Tails-up.
         Animated.timing(flip, {
-          toValue: FLIP_MAX,
+          toValue: TAILS_DEG,
           duration: SETTLE_DURATION,
           easing: Easing.out(Easing.back(1.4)),
           useNativeDriver: true,
@@ -143,30 +133,35 @@ export default function CoinFlipScreen() {
             />
 
             {/* The coin */}
-            <Animated.View
-              style={[
-                styles.coin,
-                { transform: [{ perspective: 900 }, { translateY }, { scaleY }] },
-              ]}
-            >
-              {/* Tails face (silver) sits underneath */}
-              <Animated.View style={[styles.face, { opacity: tailsOpacity }]}>
-                <CoinFace
-                  rim={['#F4F6FA', '#C7D0DD', '#9AA6B6']}
-                  field={['#FBFCFE', '#D7DEE8', '#AEB8C6']}
-                  emblem="🦅"
-                  label="TAILS"
-                  labelColor="#5B6675"
-                />
-              </Animated.View>
-              {/* Heads face (gold) on top */}
-              <Animated.View style={[styles.face, styles.faceTop, { opacity: headsOpacity }]}>
+            <Animated.View style={[styles.coin, { transform: [{ translateY }] }]}>
+              {/* Heads face (gold) — front-facing at rest */}
+              <Animated.View
+                style={[
+                  styles.face,
+                  { transform: [{ perspective: 900 }, { rotateY: rotateYFront }] },
+                ]}
+              >
                 <CoinFace
                   rim={['#FCE7A1', '#E9C24A', '#B8860B']}
                   field={['#FFF6CF', '#F4D679', '#D8A92B']}
                   emblem="👑"
                   label="HEADS"
                   labelColor="#8A6312"
+                />
+              </Animated.View>
+              {/* Tails face (silver) — offset 180deg, revealed by rotation */}
+              <Animated.View
+                style={[
+                  styles.face,
+                  { transform: [{ perspective: 900 }, { rotateY: rotateYBack }] },
+                ]}
+              >
+                <CoinFace
+                  rim={['#F4F6FA', '#C7D0DD', '#9AA6B6']}
+                  field={['#FBFCFE', '#D7DEE8', '#AEB8C6']}
+                  emblem="🦅"
+                  label="TAILS"
+                  labelColor="#5B6675"
                 />
               </Animated.View>
             </Animated.View>
@@ -276,8 +271,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1B1F3B',
   },
   coin: { width: COIN_SIZE, height: COIN_SIZE },
-  face: { ...StyleSheet.absoluteFillObject },
-  faceTop: {},
+  face: { ...StyleSheet.absoluteFillObject, backfaceVisibility: 'hidden' },
   coinRim: {
     flex: 1,
     borderRadius: COIN_SIZE / 2,
